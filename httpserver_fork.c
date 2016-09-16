@@ -108,7 +108,7 @@ void header(int handler, int status) {
 }
 
 void resolve(int handler) {
-  int size;
+  int status = 0;
   char buf[BUF_SIZE];
   char *method;
   char *filename;
@@ -119,11 +119,10 @@ void resolve(int handler) {
 
   filename = strtok(NULL, " ");
   if (filename[0] == '/') filename++;
-
   if (access(filename, F_OK) != 0) {
     header(handler, 2);
     return;
-  } else if (access(filename, R_OK) != 0) {
+  } else if (access(filename, R_OK) != 0){
     header(handler, 1);
     return;
   } else {
@@ -155,6 +154,9 @@ int main(int argc, char **argv) {
     return 3;
   }
 
+  // silently reap children
+  signal(SIGCHLD, SIG_IGN);
+
   // accept incoming requests asynchronously
   int handler;
   socklen_t size;
@@ -167,8 +169,19 @@ int main(int argc, char **argv) {
       continue;
     }
 
-    resolve(handler);
-    close(handler);
+    // handle async
+    switch (fork()) {
+    case -1:
+      perror("[main:88:fork]");
+      break;
+    case 0:
+      close(server);
+      resolve(handler);
+      close(handler);
+      exit(0);
+    default:
+      close(handler);
+    }
   }
 
   close(server);
