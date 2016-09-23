@@ -11,16 +11,18 @@
 #include <sys/socket.h>
 
 #define BUF_SIZE 100
+#define PING_SIZE 68
 
 // Get addr information (used to bindListener)
-struct addrinfo *getAddrInfo(char* port) {
+struct addrinfo *getAddrInfo(char* port, int socktype) {
   int r;
   struct addrinfo hints, *getaddrinfo_res;
+
   // Setup hints
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
   hints.ai_flags = AI_PASSIVE;
-  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_socktype = socktype;
   if ((r = getaddrinfo(NULL, port, &hints, &getaddrinfo_res))) {
     fprintf(stderr, "[getAddrInfo:21:getaddrinfo] %s\n", gai_strerror(r));
     return NULL;
@@ -62,38 +64,6 @@ int bindListener(struct addrinfo *info) {
   freeaddrinfo(info);
   return -1;
 }
-
-/*
-int getLine(int fd, char** line) {
-  int i = 0;
-  int size = BUF_SIZE;
-  char token = 0;
-  char *expand;
-
-  *line = malloc(size);
-  if (*line == NULL) return -1;
-
-  while (i<10) {
-    if(recv(fd, &token, 1, 0) < 0) {
-      free(*line);
-      return -1;
-    }
-
-    *line[i++] = token;
-    printf("%d %s", size, *line);
-
-    if (i >= BUF_SIZE) {
-      size += BUF_SIZE;
-
-      expand = realloc(*line, size);
-      if (expand == NULL) return -1;
-
-      *line = expand;
-    }
-  }
-
-  return i && *line[i-1] == '\r' ? i-1 : i;
-  }*/
 
 void header(int handler, int status) {
   char header[1000] = {0};
@@ -137,53 +107,73 @@ void resolve(int handler) {
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2) {
-    fprintf(stderr, "USAGE: ./httpserver <port>\n");
+  if (argc != 3) {
+    fprintf(stderr, "USAGE: ./multi_service_server <tcp port> <udp port>\n");
     return 1;
   }
 
-  // bind a listener
-  int server = bindListener(getAddrInfo(argv[1]));
-  if (server < 0) {
-    fprintf(stderr, "[main:72:bindListener] Failed to bind: %s:%s \n", argv[1], argv[2]);
+  int tcpServer = bindListener(getAddrInfo(argv[1], SOCK_STREAM));
+  if (tcpServer < 0) {
+    fprintf(stderr, "[main:114:bindListener] Failed to bind at port %s (TCP)\n", argv[1]);
     return 2;
   }
 
-  if (listen(server, 10) < 0) {
+  if (listen(tcpServer, 10) < 0) {
     perror("[main:82:listen]");
     return 3;
   }
 
-  // silently reap children
+  int udpServer = bindListener(getAddrInfo(argv[2], SOCK_DGRAM));
+  if (udpServer < 0) {
+    fprintf(stderr, "[main:125:bindListener] Failed to bind at port %s (UDP)\n", argv[2]);
+    return 4;
+  }
+
   signal(SIGCHLD, SIG_IGN);
 
-  // accept incoming requests asynchronously
-  int handler;
+  int handler, udpsize;
+  fd_set sockset;
   socklen_t size;
-  struct sockaddr_storage client;
+  struct sockaddr_storage tcpClient, udpClient;
   while (1) {
-    size = sizeof(client);
-    handler = accept(server, (struct sockaddr *)&client, &size);
-    if (handler < 0) {
-      perror("[main:82:accept]");
-      continue;
-    }
+    FD_ZERO(&sockset);
+    FD_SET(tcpServer, &sockset);
+    FD_SET(udpServer, &sockset);
 
-    // handle async
-    switch (fork()) {
-    case -1:
-      perror("[main:88:fork]");
-      break;
-    case 0:
-      close(server);
-      resolve(handler);
-      close(handler);
-      exit(0);
-    default:
-      close(handler);
+    select(tcpServer > udpServer ? tcpServer + 1 : udpServer + 1,
+           &sockset, NULL, NULL, NULL);
+    if (FD_ISSET(udpServer, &sockset)) {
+      char buf[PING_SIZE] = {0};
+      size = sizeof(udpClient);
+      udpsize = recvfrom(udpServer, buf, sizeof(buf), 0,
+                         (struct sockaddr *)&udpClient, &size);
+      *((uint32_t *)buf) = htonl(ntohl(*((uint32_t *)buf)) + 1);
+      sendto(udpServer, buf, udpsize, 0,
+             (struct sockaddr *)&udpClient, size);
+    } else if (FD_ISSET(tcpServer, &sockset)) {
+      size = sizeof(tcpClient);
+      handler = accept(tcpServer, (struct sockaddr *)&tcpClient, &size);
+      if (handler < 0) {
+        perror("[main:82:accept]");
+        continue;
+      }
+
+      // handle async
+      switch (fork()) {
+      case -1:
+        perror("[main:88:fork]");
+        break;
+      case 0:
+        close(tcpServer);
+        resolve(handler);
+        close(handler);
+        exit(0);
+      default:
+        close(handler);
+      }
     }
   }
 
-  close(server);
+  close(tcpServer);
   return 0;
 }

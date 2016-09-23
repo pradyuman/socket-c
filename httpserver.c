@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
   // bind a listener
   int server = bindListener(getAddrInfo(argv[1]));
   if (server < 0) {
-    fprintf(stderr, "[main:72:bindListener] Failed to bind: %s:%s \n", argv[1], argv[2]);
+    fprintf(stderr, "[main:72:bindListener] Failed to bind at port %s\n", argv[1]);
     return 2;
   }
 

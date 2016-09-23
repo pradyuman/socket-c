@@ -106,7 +106,7 @@ void resolve(int handler) {
 
 int main(int argc, char **argv) {
   if (argc != 2) {
-    fprintf(stderr, "USAGE: ./httpserver <port>\n");
+    fprintf(stderr, "USAGE: ./httpserver_fork <port>\n");
     return 1;
   }
 
@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
   // bind a listener
   int server = bindListener(getAddrInfo(argv[1]));
   if (server < 0) {
-    fprintf(stderr, "[main:72:bindListener] Failed to bind: %s:%s \n", argv[1], argv[2]);
+    fprintf(stderr, "[main:72:bindListener] Failed to bind at port %s\n", argv[1]);
     return 2;
   }
 
