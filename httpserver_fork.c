@@ -63,38 +63,6 @@ int bindListener(struct addrinfo *info) {
   return -1;
 }
 
-/*
-int getLine(int fd, char** line) {
-  int i = 0;
-  int size = BUF_SIZE;
-  char token = 0;
-  char *expand;
-
-  *line = malloc(size);
-  if (*line == NULL) return -1;
-
-  while (i<10) {
-    if(recv(fd, &token, 1, 0) < 0) {
-      free(*line);
-      return -1;
-    }
-
-    *line[i++] = token;
-    printf("%d %s", size, *line);
-
-    if (i >= BUF_SIZE) {
-      size += BUF_SIZE;
-
-      expand = realloc(*line, size);
-      if (expand == NULL) return -1;
-
-      *line = expand;
-    }
-  }
-
-  return i && *line[i-1] == '\r' ? i-1 : i;
-  }*/
-
 void header(int handler, int status) {
   char header[1000] = {0};
   if (status == 0) {
@@ -141,6 +109,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "USAGE: ./httpserver <port>\n");
     return 1;
   }
+
+  fd_set readfs;
+  FD_ZERO(&readfs);
 
   // bind a listener
   int server = bindListener(getAddrInfo(argv[1]));
